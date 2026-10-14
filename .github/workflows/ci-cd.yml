@@ -14,7 +14,6 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAMESPACE: ghcr.io/${{ github.repository }}
   IMAGE_TAG: ${{ github.sha }}
-  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
 jobs:
   test:
@@ -109,8 +108,17 @@ jobs:
         with:
           backend-image: taskboard-backend:${{ github.sha }}
 
+      - name: Upload security scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results-${{ github.sha }}
+          path: security-reports/
+          if-no-files-found: error
+          retention-days: 14
+
   sonar:
-    name: SonarQube analysis
+    name: SonarCloud analysis
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -128,24 +136,58 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
           pytest --cov=taskboard --cov-report=xml:coverage.xml
 
-      - name: Validate SonarQube settings
+      - name: Validate SonarCloud settings
         run: |
-          test -n "$SONAR_HOST_URL"
           test -n "$SONAR_TOKEN"
+          test -n "$SONAR_ORGANIZATION"
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
 
-      - name: Run SonarScanner
-        working-directory: backend
+      - name: Run SonarCloud backend analysis
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          docker run --rm --network host \
-            -e SONAR_HOST_URL \
-            -e SONAR_TOKEN \
-            -v "$PWD:/usr/src" \
-            sonarsource/sonar-scanner-cli:11.0.1.1589_6.2.1 \
+        with:
+          projectBaseDir: backend
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.host.url=https://sonarcloud.io
             -Dsonar.qualitygate.wait=true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Prepare frontend analysis
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run SonarCloud frontend analysis
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: frontend
+          args: >
+            -Dsonar.organization=${{ vars.SONAR_ORGANIZATION }}
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.qualitygate.wait=true
+
+      - name: Upload SonarCloud metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarcloud-results-${{ github.sha }}
+          path: |
+            backend/.scannerwork/report-task.txt
+            backend/coverage.xml
+            frontend/.scannerwork/report-task.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   deploy:
     name: Deploy Helm release
