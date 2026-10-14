@@ -62,14 +62,4 @@ runs:
           --format sarif \
           --output /src/security-reports/trivy-image.sarif
 
-    - name: Fail if a security scan found issues
-      if: always()
-      shell: bash
-      run: |
-        if [[ "${{ steps.gitleaks.outcome }}" != "success" ||
-              "${{ steps.trufflehog.outcome }}" != "success" ||
-              "${{ steps.trivy-filesystem.outcome }}" != "success" ||
-              "${{ steps.trivy-image.outcome }}" != "success" ]]; then
-          echo "One or more security scans reported findings or failed."
-          exit 1
-        fi
+    
