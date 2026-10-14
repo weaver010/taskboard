@@ -1,0 +1,6 @@
+TaskBoard {{ .Release.Name }} installed in namespace {{ .Release.Namespace }}.
+
+  kubectl -n {{ .Release.Namespace }} get pods,svc,pvc
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }} --logs
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "taskboard.fullname" . }}-frontend 3000:{{ .Values.frontend.service.port }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "taskboard.fullname" . }}-backend 8000:{{ .Values.backend.service.port }}

@@ -1,0 +1,41 @@
+name: Security scans
+description: Run repository and container security scans with pinned scanner images
+inputs:
+  backend-image:
+    description: Fully qualified backend image reference to scan
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Gitleaks
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker run --rm -v "$PWD:/src" \
+          ghcr.io/gitleaks/gitleaks:v8.30.1 \
+          dir /src --redact
+
+    - name: TruffleHog
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker run --rm -v "$PWD:/src" \
+          trufflesecurity/trufflehog:3.99.2 \
+          filesystem /src
+
+    - name: Trivy filesystem
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker run --rm -v "$PWD:/src" \
+          aquasec/trivy:0.75.0 \
+          fs /src --scanners vuln,secret,misconfig --severity HIGH,CRITICAL
+
+    - name: Trivy backend image
+      shell: bash
+      run: |
+        set -euo pipefail
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          aquasec/trivy:0.75.0 \
+          image "${{ inputs.backend-image }}" \
+          --severity HIGH,CRITICAL --ignore-unfixed
